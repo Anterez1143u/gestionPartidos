@@ -18,6 +18,12 @@ class TorneoController extends Controller
         return view('admin.torneos.create');
     }
 
+    public function edit($id)
+    {
+        $torneo = Torneo::findOrFail($id);
+        return view('admin.torneos.edit', compact('torneo'));
+    }
+
     public function store(Request $request)
     {
         $data = $request->validate([

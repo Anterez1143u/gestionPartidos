@@ -25,6 +25,7 @@ Route::middleware('auth')->group(function () {
 // usar la clase del middleware directamente (no requiere alias en Kernel)
 Route::middleware(['auth', \App\Http\Middleware\CheckRole::class . ':admin'])->group(function () {
     Route::get('/admin/torneos/crear', [TorneoController::class, 'create'])->name('admin.torneos.create');
+    Route::get('/admin/torneos/edit', [TorneoController::class, 'edit'])->name('admin.torneos.edit');
     Route::post('/admin/torneos', [TorneoController::class, 'store'])->name('admin.torneos.store');
     Route::resource('torneos', TorneoController::class);
     Route::resource('equipos', EquipoController::class);
