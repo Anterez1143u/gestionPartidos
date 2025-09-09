@@ -1,0 +1,33 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('equipos', function (Blueprint $table) {
+            $table->id();
+            $table->string('nombre');
+            $table->json('jugadores'); // lista de jugadores en formato JSON
+            $table->string('categoria')->nullable();
+            $table->unsignedBigInteger('torneo_id');
+            $table->timestamps();
+
+            $table->foreign('torneo_id')->references('id')->on('torneos')->onDelete('cascade');
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('equipos');
+    }
+};
