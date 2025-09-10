@@ -1,91 +1,210 @@
 <x-app-layout>
-    <div class="max-w-3xl mx-auto p-6">
-        <div class="flex items-center justify-between mb-6">
-            <h1 class="text-2xl font-bold">
-                {{ isset($equipo) ? 'Editar equipo' : 'Crear equipo' }}
-            </h1>
-            <a href="{{ route('equipos.index') }}" class="px-3 py-2 bg-gray-100 rounded text-sm">Volver</a>
-        </div>
-
-        @if($errors->any())
-            <div class="mb-4 p-3 bg-red-50 text-red-700 rounded">
-                <ul class="list-disc pl-5">
-                    @foreach($errors->all() as $error)
-                        <li>{{ $error }}</li>
-                    @endforeach
-                </ul>
+    <style>
+        body {
+            background: #1b2e47 !important;
+        }
+        .equipo-bg {
+            background: #1b2e47;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .equipo-card {
+            background: #232946;
+            color: #fff;
+            max-width: 600px;
+            width: 100%;
+            margin: auto;
+            border-radius: 18px;
+            box-shadow: 0 8px 32px rgba(13,110,253,0.10);
+            padding: 36px 32px;
+        }
+        .equipo-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 28px;
+        }
+        .equipo-header h1 {
+            font-size: 1.7rem;
+            font-weight: 700;
+            color: #00c896;
+            margin-bottom: 0;
+        }
+        .equipo-header a {
+            background: #00c896;
+            color: #fff;
+            font-weight: 600;
+            border-radius: 8px;
+            padding: 8px 18px;
+            text-decoration: none;
+            transition: background .2s;
+        }
+        .equipo-header a:hover {
+            background: #0d6efd;
+        }
+        .form-label {
+            font-weight: 700;
+            font-size: 1.08rem;
+            color: #fff;
+            margin-bottom: 6px;
+            letter-spacing: 0.5px;
+        }
+        .form-control, .form-select, textarea {
+            background: #2a3550 !important;
+            color: #fff !important;
+            border-radius: 8px !important;
+            border: 1.5px solid #00c896 !important;
+            margin-bottom: 18px;
+            font-size: 1.05rem;
+            box-shadow: 0 2px 8px rgba(0,200,150,0.05);
+        }
+        .form-control:focus, .form-select:focus, textarea:focus {
+            border-color: #0d6efd !important;
+            box-shadow: 0 0 0 2px #0d6efd33;
+        }
+        .jugadores-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .btn-remove {
+            background: #ffe6e6;
+            color: #c00;
+            font-weight: 600;
+            border-radius: 8px;
+            padding: 7px 16px;
+            border: none;
+            transition: background .2s;
+        }
+        .btn-remove:hover {
+            background: #ffb3b3;
+        }
+        .btn-add {
+            background: #00c896;
+            color: #fff;
+            font-weight: 600;
+            border-radius: 8px;
+            padding: 10px 22px;
+            border: none;
+            margin-top: 8px;
+            transition: background .2s;
+        }
+        .btn-add:hover {
+            background: #0d6efd;
+        }
+        .btn-submit {
+            background: #00c896;
+            color: #fff;
+            font-weight: 700;
+            border-radius: 8px;
+            padding: 14px 28px;
+            font-size: 1.15rem;
+            border: none;
+            transition: background .2s;
+            width: 100%;
+            box-shadow: 0 2px 8px rgba(0,200,150,0.08);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .btn-submit:hover {
+            background: #0d6efd;
+        }
+        .error-list {
+            background: #ffe6e6;
+            color: #c00;
+            border-radius: 8px;
+            padding: 14px;
+            margin-bottom: 18px;
+        }
+    </style>
+    <div class="equipo-bg">
+        <div class="equipo-card">
+            <div class="equipo-header">
+                <h1>{{ isset($equipo) ? 'Editar equipo' : 'Crear equipo' }}</h1>
+                <a href="{{ route('equipos.index') }}">Volver</a>
             </div>
-        @endif
 
-        <form action="{{ isset($equipo) ? route('equipos.update', $equipo) : route('equipos.store') }}"
-              method="POST"
-              id="equipoForm"
-              class="space-y-6 bg-white p-6 rounded shadow">
-            @csrf
-            @if(isset($equipo))
-                @method('PUT')
+            @if($errors->any())
+                <div class="error-list">
+                    <ul class="list-disc pl-5">
+                        @foreach($errors->all() as $error)
+                            <li>{{ $error }}</li>
+                        @endforeach
+                    </ul>
+                </div>
             @endif
 
-            <div>
-                <label for="nombre" class="block text-sm font-medium text-gray-700">Nombre *</label>
-                <input id="nombre" name="nombre" type="text"
-                    value="{{ old('nombre', $equipo->nombre ?? '') }}"
-                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm" required>
-            </div>
+            <form action="{{ isset($equipo) ? route('equipos.update', $equipo) : route('equipos.store') }}"
+                  method="POST"
+                  id="equipoForm"
+                  class="space-y-6">
+                @csrf
+                @if(isset($equipo))
+                    @method('PUT')
+                @endif
 
-            <div>
-                <label for="torneo_id" class="block text-sm font-medium text-gray-700">Torneo *</label>
-                <select id="torneo_id" name="torneo_id" class="mt-1 block w-full rounded-md border-gray-300" required>
-                    <option value="">Selecciona un torneo</option>
-                    @foreach($torneos as $torneo)
-                        <option value="{{ $torneo->id }}"
-                            {{ old('torneo_id', $equipo->torneo_id ?? '') == $torneo->id ? 'selected' : '' }}>
-                            {{ $torneo->deporte ?? $torneo->nombre ?? 'Torneo #'.$torneo->id }}
-                        </option>
-                    @endforeach
-                </select>
-            </div>
+                <div>
+                    <label for="nombre" class="form-label">Nombre *</label>
+                    <input id="nombre" name="nombre" type="text"
+                        value="{{ old('nombre', $equipo->nombre ?? '') }}"
+                        class="form-control" required>
+                </div>
 
-            <div>
-                <label class="block text-sm font-medium text-gray-700">Jugadores *</label>
-                <div id="jugadoresList" class="space-y-2 mt-2">
-                    @php
-                        $oldJugadores = old('jugadores', $equipo->jugadores ?? []);
-                        if (!is_array($oldJugadores)) $oldJugadores = json_decode($oldJugadores, true) ?? [$oldJugadores];
-                    @endphp
-
-                    @if(count($oldJugadores) > 0)
-                        @foreach($oldJugadores as $j)
-                            <div class="flex gap-2">
-                                <input type="text" name="jugadores[]" value="{{ $j }}" class="flex-1 rounded-md border-gray-300" required>
-                                <button type="button" class="removeJugador px-3 py-1 bg-red-100 text-red-700 rounded">Eliminar</button>
-                            </div>
+                <div>
+                    <label for="torneo_id" class="form-label">Torneo *</label>
+                    <select id="torneo_id" name="torneo_id" class="form-select" required>
+                        <option value="">Selecciona un torneo</option>
+                        @foreach($torneos as $torneo)
+                            <option value="{{ $torneo->id }}"
+                                {{ old('torneo_id', $equipo->torneo_id ?? '') == $torneo->id ? 'selected' : '' }}>
+                                {{ $torneo->deporte ?? $torneo->nombre ?? 'Torneo #'.$torneo->id }}
+                            </option>
                         @endforeach
-                    @else
-                        <div class="flex gap-2">
-                            <input type="text" name="jugadores[]" placeholder="Nombre jugador" class="flex-1 rounded-md border-gray-300" required>
-                            <button type="button" class="removeJugador px-3 py-1 bg-red-100 text-red-700 rounded">Eliminar</button>
-                        </div>
-                    @endif
+                    </select>
                 </div>
 
-                <div class="mt-2">
-                    <button type="button" id="addJugador" class="px-4 py-2 bg-emerald-600 text-white rounded">Añadir jugador</button>
+                <div>
+                    <label class="form-label">Jugadores *</label>
+                    <div id="jugadoresList">
+                        @php
+                            $oldJugadores = old('jugadores', $equipo->jugadores ?? []);
+                            if (!is_array($oldJugadores)) $oldJugadores = json_decode($oldJugadores, true) ?? [$oldJugadores];
+                        @endphp
+
+                        @if(count($oldJugadores) > 0)
+                            @foreach($oldJugadores as $j)
+                                <div class="jugadores-row">
+                                    <input type="text" name="jugadores[]" value="{{ $j }}" class="form-control flex-1" required>
+                                    <button type="button" class="btn-remove">Eliminar</button>
+                                </div>
+                            @endforeach
+                        @else
+                            <div class="jugadores-row">
+                                <input type="text" name="jugadores[]" placeholder="Nombre jugador" class="form-control flex-1" required>
+                                <button type="button" class="btn-remove">Eliminar</button>
+                            </div>
+                        @endif
+                    </div>
+                    <button type="button" id="addJugador" class="btn-add">Añadir jugador</button>
                 </div>
-            </div>
 
-            <div>
-                <label for="categoria" class="block text-sm font-medium text-gray-700">Categoría</label>
-                <input id="categoria" name="categoria" type="text" value="{{ old('categoria', $equipo->categoria ?? '') }}"
-                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
-            </div>
+                <div>
+                    <label for="categoria" class="form-label">Categoría</label>
+                    <input id="categoria" name="categoria" type="text" value="{{ old('categoria', $equipo->categoria ?? '') }}"
+                        class="form-control">
+                </div>
 
-            <div class="pt-4">
-                <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded">
-                    {{ isset($equipo) ? 'Actualizar equipo' : 'Registrar equipo' }}
-                </button>
-            </div>
-        </form>
+                <div class="pt-4">
+                    <button type="submit" class="btn-submit">
+                        {{ isset($equipo) ? 'Actualizar equipo' : 'Registrar equipo' }}
+                    </button>
+                </div>
+            </form>
+        </div>
     </div>
 
     <script>
@@ -95,16 +214,17 @@
 
             function makeRow(value = '') {
                 const wrapper = document.createElement('div');
-                wrapper.className = 'flex gap-2';
+                wrapper.className = 'jugadores-row';
                 const input = document.createElement('input');
                 input.type = 'text';
                 input.name = 'jugadores[]';
                 input.placeholder = 'Nombre jugador';
                 input.value = value;
-                input.className = 'flex-1 rounded-md border-gray-300';
+                input.className = 'form-control flex-1';
+                input.required = true;
                 const btn = document.createElement('button');
                 btn.type = 'button';
-                btn.className = 'removeJugador px-3 py-1 bg-red-100 text-red-700 rounded';
+                btn.className = 'btn-remove';
                 btn.textContent = 'Eliminar';
                 btn.addEventListener('click', () => wrapper.remove());
                 wrapper.appendChild(input);
@@ -116,9 +236,9 @@
                 list.appendChild(makeRow());
             });
 
-            document.querySelectorAll('.removeJugador').forEach(b => {
+            document.querySelectorAll('.btn-remove').forEach(b => {
                 b.addEventListener('click', (e) => {
-                    e.target.closest('.flex').remove();
+                    e.target.closest('.jugadores-row').remove();
                 });
             });
         })();

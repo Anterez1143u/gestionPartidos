@@ -1,129 +1,230 @@
 <x-app-layout>
-    <div class="max-w-4xl mx-auto p-6">
-        <div class="flex items-center justify-between mb-6">
-            @php
-                $sessionGroups = session('generated_groups', null);
-                $sessionGroupsTorneo = session('generated_groups_torneo', null);
-                $totalTeams = 0;
-                if (is_array($sessionGroups)) {
-                    foreach ($sessionGroups as $g) {
-                        $totalTeams += is_array($g) ? count($g) : 0;
-                    }
-                }
-                $canViewMatches = false;
-                if ($sessionGroups && $sessionGroupsTorneo) {
-                    $torneoObj = \App\Models\Torneo::find($sessionGroupsTorneo);
-                    $hasFechaInicio = $torneoObj && !empty($torneoObj->fecha_inicio);
-                    if ($hasFechaInicio && $totalTeams >= 2) {
-                        $canViewMatches = true;
-                    }
-                }
-            @endphp
-
-            <h1 class="text-2xl font-bold">Generación de Grupos / Llaves</h1>
-            <div class="flex gap-2">
-                <a href="{{ route('torneos.index') }}" class="px-3 py-2 bg-gray-100 rounded text-sm">Torneos</a>
-
-                {{-- botón para ir a partidos: solo mostrar cuando estén completos los datos --}}
-                @if($canViewMatches)
-                    <a id="viewMatchesBtn" href="{{ route('partidos.index') }}" class="px-3 py-2 bg-indigo-600 text-white rounded text-sm">Ver partidos</a>
-                @else
-                    <a id="viewMatchesBtn" style="display:none" href="{{ route('partidos.index') }}" class="px-3 py-2 bg-indigo-600 text-white rounded text-sm">Ver partidos</a>
-                @endif
-            </div>
-        </div>
-
-        <form id="generateGroupsForm" class="bg-white p-6 rounded shadow space-y-4" method="POST" action="{{ route('grupos.generate.run') }}">
-            @csrf
-
-            <div>
-                <label class="block text-sm font-medium text-gray-700">Torneo</label>
-                <select id="torneo_id" name="torneo_id" class="mt-1 block w-full rounded-md border-gray-300" required>
-                    <option value="">Selecciona un torneo</option>
-                    @foreach($torneos as $t)
-                        <option value="{{ $t->id }}"
-                            {{ (int)old('torneo_id', $selected ?? '') === $t->id ? 'selected' : '' }}>
-                            {{ $t->deporte ?? $t->nombre ?? 'Torneo #'.$t->id }} @if($t->numero_participantes) ({{ $t->numero_participantes }}) @endif
-                        </option>
-                    @endforeach
-                </select>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    @php
+        $canViewMatches = $canViewMatches ?? false;
+    @endphp
+    <style>
+        body {
+            background: #1b2e47 !important;
+        }
+        .grupos-bg {
+            background: #1b2e47;
+            min-height: 100vh;
+            padding-top: 40px;
+        }
+        .grupos-card {
+            background: #232946;
+            color: #fff;
+            border-radius: 18px;
+            box-shadow: 0 8px 32px rgba(13,110,253,0.10);
+            padding: 36px 32px;
+            margin-bottom: 32px;
+        }
+        .grupos-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 28px;
+        }
+        .grupos-header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #00c896;
+            margin-bottom: 0;
+        }
+        .grupos-header .btn {
+            font-weight: 600;
+            border-radius: 8px;
+            padding: 10px 22px;
+            margin-right: 8px;
+            background: #00c896;
+            color: #fff;
+            text-decoration: none;
+            transition: background .2s;
+        }
+        .grupos-header .btn:last-child { margin-right: 0; }
+        .grupos-header .btn:hover {
+            background: #0d6efd;
+        }
+        .form-label {
+            font-weight: 700;
+            font-size: 1.08rem;
+            color: #fff;
+            margin-bottom: 6px;
+            letter-spacing: 0.5px;
+        }
+        .form-control, .form-select, input[type="number"], input[type="date"] {
+            background: #2a3550 !important;
+            color: #fff !important;
+            border-radius: 8px !important;
+            border: 1.5px solid #00c896 !important;
+            margin-bottom: 18px;
+            font-size: 1.05rem;
+            box-shadow: 0 2px 8px rgba(0,200,150,0.05);
+        }
+        .form-control:focus, .form-select:focus, input[type="number"]:focus, input[type="date"]:focus {
+            border-color: #0d6efd !important;
+            box-shadow: 0 0 0 2px #0d6efd33;
+        }
+        .btn-generate, .btn-save {
+            background: #00c896;
+            color: #fff;
+            font-weight: 700;
+            border-radius: 8px;
+            padding: 14px 28px;
+            font-size: 1.15rem;
+            border: none;
+            transition: background .2s;
+            width: 100%;
+            box-shadow: 0 2px 8px rgba(0,200,150,0.08);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .btn-generate:hover, .btn-save:hover {
+            background: #0d6efd;
+        }
+        .preview-card, .schedule-card {
+            background: #232946;
+            color: #fff;
+            border-radius: 14px;
+            box-shadow: 0 4px 16px rgba(13,110,253,0.08);
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        .bg-yellow-50 {
+            background: #ffe066 !important;
+            color: #232946 !important;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .bg-white {
+            background: #232946 !important;
+            color: #fff !important;
+        }
+        .shadow {
+            box-shadow: 0 8px 32px rgba(13,110,253,0.10) !important;
+        }
+        .text-emerald-600 {
+            color: #00c896 !important;
+        }
+        .text-indigo-600 {
+            color: #0d6efd !important;
+        }
+        .rounded {
+            border-radius: 14px !important;
+        }
+        .btn-indigo {
+            background: #0d6efd;
+            color: #fff;
+            font-weight: 600;
+            border-radius: 8px;
+            padding: 10px 22px;
+            border: none;
+            transition: background .2s;
+        }
+        .btn-indigo:hover {
+            background: #00c896;
+        }
+    </style>
+    <div class="grupos-bg">
+        <div class="max-w-4xl mx-auto p-6">
+            <div class="grupos-header">
+                <h1>Generación de Grupos / Llaves</h1>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">Tipo</label>
-                    <select id="tipo" name="tipo" class="mt-1 block w-full rounded-md border-gray-300">
-                        <option value="grupos" {{ old('tipo', $tipo ?? 'grupos') === 'grupos' ? 'selected' : '' }}>Grupos</option>
-                        <option value="llaves" {{ old('tipo', $tipo ?? '') === 'llaves' ? 'selected' : '' }}>Llaves / Cuadro eliminatorio</option>
+                    <a href="{{ route('torneos.index') }}" class="btn">Torneos</a>
+                    @if($canViewMatches)
+                        <a id="viewMatchesBtn" href="{{ route('partidos.index') }}" class="btn btn-indigo">Ver partidos</a>
+                    @else
+                        <a id="viewMatchesBtn" style="display:none" href="{{ route('partidos.index') }}" class="btn btn-indigo">Ver partidos</a>
+                    @endif
+                </div>
+            </div>
+
+            <form id="generateGroupsForm" class="grupos-card shadow space-y-4" method="POST" action="{{ route('grupos.generate.run') }}">
+                @csrf
+                <div>
+                    <label class="form-label">Torneo</label>
+                    <select id="torneo_id" name="torneo_id" class="form-select" required>
+                        <option value="">Selecciona un torneo</option>
+                        @foreach($torneos as $t)
+                            <option value="{{ $t->id }}"
+                                {{ (int)old('torneo_id', $selected ?? '') === $t->id ? 'selected' : '' }}>
+                                {{ $t->deporte ?? $t->nombre ?? 'Torneo #'.$t->id }} @if($t->numero_participantes) ({{ $t->numero_participantes }}) @endif
+                            </option>
+                        @endforeach
                     </select>
                 </div>
-
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">Equipos por grupo</label>
-                    <input id="equipos_por_grupo" name="equipos_por_grupo" type="number" min="2"
-                           value="{{ old('equipos_por_grupo', $equipos_por_grupo ?? 4) }}"
-                           class="mt-1 block w-full rounded-md border-gray-300">
-                </div>
-
-                <div class="flex items-end md:col-span-3">
-                    <div class="w-full grid grid-cols-2 gap-2">
-                        <button id="generateBtn" class="w-full bg-emerald-600 text-white py-2 rounded">Generar calendario</button>
-                        <button id="saveScheduleBtn" class="w-full bg-sky-600 text-white py-2 rounded" style="display:none">Guardar calendario</button>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="form-label">Tipo</label>
+                        <select id="tipo" name="tipo" class="form-select">
+                            <option value="grupos" {{ old('tipo', $tipo ?? 'grupos') === 'grupos' ? 'selected' : '' }}>Grupos</option>
+                            <option value="llaves" {{ old('tipo', $tipo ?? '') === 'llaves' ? 'selected' : '' }}>Llaves / Cuadro eliminatorio</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label">Equipos por grupo</label>
+                        <input id="equipos_por_grupo" name="equipos_por_grupo" type="number" min="2"
+                               value="{{ old('equipos_por_grupo', $equipos_por_grupo ?? 4) }}"
+                               class="form-control">
+                    </div>
+                    <div class="flex items-end md:col-span-3">
+                        <div class="w-full grid grid-cols-2 gap-2">
+                            <button id="generateBtn" class="btn-generate">Generar calendario</button>
+                            <button id="saveScheduleBtn" class="btn-save" style="display:none">Guardar calendario</button>
+                        </div>
                     </div>
                 </div>
-            </div>
-        </form>
+            </form>
 
-        <div id="preview" class="mt-6">
-            @if(!empty($groups))
-                <div class="bg-white rounded shadow p-4 space-y-3" id="serverGroups">
-                    @foreach($groups as $i => $g)
-                        <div data-group-index="{{ $i }}">
-                            <strong>Grupo {{ $i + 1 }}</strong>
-                            <ul class="list-disc pl-5 mt-1">
-                                @foreach($g as $team)
-                                    <li data-team="{{ e($team) }}">{{ e($team) }}</li>
-                                @endforeach
-                            </ul>
-                        </div>
-                    @endforeach
-                </div>
-            @else
-                <div class="p-4 bg-yellow-50 rounded">No hay grupos generados todavía.</div>
-            @endif
-        </div>
-
-        {{-- Formulario de programación (usa los grupos visibles en preview) --}}
-        <div class="mt-6 bg-white p-6 rounded shadow">
-            <h2 class="text-lg font-semibold mb-3">Generar horario desde grupos</h2>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">Fecha inicio</label>
-                    <input id="fecha_inicio_sched" type="date"
-                        value="{{ old('fecha_inicio', optional($torneos->firstWhere('id', $selected))->fecha_inicio ?? '') }}"
-                        class="mt-1 block w-full rounded-md border-gray-300">
-                </div>
-
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">Días entre jornadas</label>
-                    <input id="dias_entre_sched" type="number" min="1" value="7" class="mt-1 block w-full rounded-md border-gray-300">
-                </div>
-
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">Programar en</label>
-                    <select id="tipo_horario_sched" class="mt-1 block w-full rounded-md border-gray-300">
-                        <option value="todo">Todos los días</option>
-                        <option value="entre_semana">Entre semana (Lun-Vie)</option>
-                        <option value="fines_semana">Fines de semana (Sáb-Dom)</option>
-                    </select>
-                </div>
-
-                <div class="md:col-span-3">
-                    <button id="generateScheduleBtn" class="w-full bg-indigo-600 text-white py-2 rounded">Generar horario usando estos grupos</button>
-                </div>
+            <div id="preview" class="preview-card mt-6">
+                @if(!empty($groups))
+                    <div class="bg-white rounded shadow p-4 space-y-3" id="serverGroups">
+                        @foreach($groups as $i => $g)
+                            <div data-group-index="{{ $i }}">
+                                <strong>Grupo {{ $i + 1 }}</strong>
+                                <ul class="list-disc pl-5 mt-1">
+                                    @foreach($g as $team)
+                                        <li data-team="{{ e($team) }}">{{ e($team) }}</li>
+                                    @endforeach
+                                </ul>
+                            </div>
+                        @endforeach
+                    </div>
+                @else
+                    <div class="bg-yellow-50 rounded">No hay grupos generados todavía.</div>
+                @endif
             </div>
 
-            <div id="scheduleResult" class="mt-4"></div>
+            <div class="schedule-card mt-6">
+                <h2 class="font-semibold mb-3 text-emerald-600">Generar horario desde grupos</h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="form-label">Fecha inicio</label>
+                        <input id="fecha_inicio_sched" type="date"
+                            value="{{ old('fecha_inicio', optional($torneos->firstWhere('id', $selected))->fecha_inicio ?? '') }}"
+                            class="form-control">
+                    </div>
+                    <div>
+                        <label class="form-label">Días entre jornadas</label>
+                        <input id="dias_entre_sched" type="number" min="1" value="7" class="form-control">
+                    </div>
+                    <div>
+                        <label class="form-label">Programar en</label>
+                        <select id="tipo_horario_sched" class="form-select">
+                            <option value="todo">Todos los días</option>
+                            <option value="entre_semana">Entre semana (Lun-Vie)</option>
+                            <option value="fines_semana">Fines de semana (Sáb-Dom)</option>
+                        </select>
+                    </div>
+                    <div class="md:col-span-3">
+                        <button id="generateScheduleBtn" class="btn-indigo w-full mt-2">Generar horario usando estos grupos</button>
+                    </div>
+                </div>
+                <div id="scheduleResult" class="mt-4"></div>
+            </div>
         </div>
     </div>
 

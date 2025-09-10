@@ -48,4 +48,6 @@ Route::middleware(['auth'])->group(function () {
     })->name('participante.dashboard');
 });
 
+Route::get('/resultados', [ResultadoController::class, 'index'])->name('resultados.index');
+
 require __DIR__.'/auth.php';

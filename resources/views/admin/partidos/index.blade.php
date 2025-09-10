@@ -1,82 +1,236 @@
 <x-app-layout>
-    <div class="max-w-6xl mx-auto p-6">
-        <div class="flex items-center justify-between mb-6">
-            <h1 class="text-2xl font-bold">Generación de Calendario de Partidos</h1>
-            <div class="flex gap-2">
-                <a href="{{ route('torneos.index') }}" class="px-3 py-2 bg-gray-100 rounded text-sm">Torneos</a>
-                <a href="{{ route('grupos.generate') }}" class="px-3 py-2 bg-blue-600 text-white rounded text-sm">Grupos</a>
-                <a href="{{ route('partidos.index') }}" class="px-3 py-2 bg-indigo-600 text-white rounded text-sm">Partidos</a>
-            </div>
-        </div>
-
-        @php
-            $sessionGroups = session('generated_groups', null);
-            $sessionGroupsTorneo = session('generated_groups_torneo', null);
-        @endphp
-
-        <form id="generateCalendarForm" class="bg-white p-6 rounded shadow space-y-4" onsubmit="return false;">
-            @csrf
-
-            <div>
-                <label class="block text-sm font-medium text-gray-700">Torneo</label>
-                <select id="torneo_id" name="torneo_id" class="mt-1 block w-full rounded-md border-gray-300" required>
-                    <option value="">Selecciona un torneo</option>
-                    @foreach(\App\Models\Torneo::all() as $t)
-                        <option value="{{ $t->id }}"
-                            {{ (int)old('torneo_id', $sessionGroupsTorneo ?? '') === $t->id ? 'selected' : '' }}>
-                            {{ $t->deporte }} @if($t->numero_participantes) ({{ $t->numero_participantes }}) @endif
-                        </option>
-                    @endforeach
-                </select>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <style>
+        body {
+            background: #1b2e47 !important;
+        }
+        .partidos-bg {
+            background: #1b2e47;
+            min-height: 100vh;
+            padding-top: 40px;
+        }
+        .partidos-header {
+            margin-bottom: 32px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .partidos-header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #00c896;
+            margin-bottom: 0;
+        }
+        .partidos-header .btn {
+            font-weight: 600;
+            border-radius: 8px;
+            margin-right: 8px;
+            padding: 10px 22px;
+            box-shadow: 0 2px 8px rgba(0,200,150,0.08);
+            border: none;
+            transition: background .2s;
+            font-size: 1rem;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .partidos-header .btn:last-child { margin-right: 0; }
+        .partidos-header .btn-primary {
+            background: #00c896;
+            color: #fff;
+        }
+        .partidos-header .btn-primary:hover {
+            background: #0d6efd;
+        }
+        .partidos-header .btn-accent {
+            background: #232946;
+            color: #fff;
+        }
+        .partidos-header .btn-accent:hover {
+            background: #00c896;
+        }
+        .partidos-header .btn-groups {
+            background: #0d6efd;
+            color: #fff;
+        }
+        .partidos-header .btn-groups:hover {
+            background: #00c896;
+        }
+        .partidos-card {
+            background: #232946;
+            border-radius: 14px;
+            box-shadow: 0 8px 32px rgba(13,110,253,0.10);
+            padding: 32px;
+            margin-bottom: 32px;
+        }
+        .form-label {
+            font-weight: 700;
+            font-size: 1.08rem;
+            color: #fff;
+            margin-bottom: 6px;
+            letter-spacing: 0.5px;
+        }
+        .form-control, .form-select, input[type="date"], input[type="number"] {
+            background: #2a3550 !important;
+            color: #fff !important;
+            border-radius: 8px !important;
+            border: 1.5px solid #00c896 !important;
+            margin-bottom: 18px;
+            font-size: 1.05rem;
+            box-shadow: 0 2px 8px rgba(0,200,150,0.05);
+        }
+        .form-control:focus, .form-select:focus, input[type="date"]:focus, input[type="number"]:focus {
+            border-color: #0d6efd !important;
+            box-shadow: 0 0 0 2px #0d6efd33;
+        }
+        .btn-generate {
+            background: #00c896;
+            color: #fff;
+            font-weight: 700;
+            border-radius: 8px;
+            padding: 14px 28px;
+            font-size: 1.15rem;
+            border: none;
+            transition: background .2s;
+            width: 100%;
+            box-shadow: 0 2px 8px rgba(0,200,150,0.08);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .btn-generate:hover {
+            background: #0d6efd;
+        }
+        .calendar-preview, .matches-list, .matches-summary {
+            background: #232946;
+            color: #fff;
+            border-radius: 14px;
+            box-shadow: 0 4px 16px rgba(13,110,253,0.08);
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        .calendar-preview .bg-yellow-50,
+        .calendar-preview .bg-green-50 {
+            background: #00c89622 !important;
+            color: #00c896 !important;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .matches-list .border-b {
+            border-bottom: 1px solid #1b2e47;
+        }
+        .matches-list .btn-save {
+            background: #0d6efd;
+            color: #fff;
+            border-radius: 8px;
+            padding: 6px 16px;
+            font-size: 0.95rem;
+            border: none;
+            transition: background .2s;
+        }
+        .matches-list .btn-save:hover {
+            background: #00c896;
+        }
+        .matches-list input[type="number"] {
+            background: #2a3550 !important;
+            color: #fff !important;
+            border: 1.5px solid #00c896 !important;
+        }
+        .matches-list select {
+            background: #2a3550 !important;
+            color: #fff !important;
+            border: 1.5px solid #00c896 !important;
+        }
+        .matches-summary canvas {
+            background: #232946;
+            border-radius: 8px;
+        }
+    </style>
+    <div class="partidos-bg">
+        <div class="max-w-6xl mx-auto px-3">
+            <div class="partidos-header">
+                <h1>Generación de Calendario de Partidos</h1>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">Fecha inicio</label>
-                    <input id="fecha_inicio" name="fecha_inicio" type="date"
-                        value="{{ old('fecha_inicio', optional(\App\Models\Torneo::find($sessionGroupsTorneo))->fecha_inicio ?? '') }}"
-                        class="mt-1 block w-full rounded-md border-gray-300" required>
-                </div>
-
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">Días entre jornadas</label>
-                    <input id="dias_entre" name="dias_entre" type="number" min="1" value="7" class="mt-1 block w-full rounded-md border-gray-300">
-                </div>
-
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">Programar en</label>
-                    <select id="tipo_horario" name="tipo_horario" class="mt-1 block w-full rounded-md border-gray-300">
-                        <option value="todo">Todos los días</option>
-                        <option value="entre_semana">Entre semana (Lun-Vie)</option>
-                        <option value="fines_semana">Fines de semana (Sáb-Dom)</option>
-                    </select>
-                </div>
-
-                <div class="md:col-span-3">
-                    <label class="inline-flex items-center">
-                        <input id="use_groups" type="checkbox" class="form-checkbox" {{ $sessionGroups ? 'checked' : '' }}>
-                        <span class="ml-2 text-sm text-gray-700">Usar grupos guardados en sesión</span>
-                    </label>
-                </div>
-
-                <div class="flex items-end md:col-span-3">
-                    <button id="generateBtn" class="w-full bg-emerald-600 text-white py-2 rounded">Generar calendario</button>
+                    <a href="{{ route('torneos.index') }}" class="btn btn-accent">Torneos</a>
+                    <a href="{{ route('grupos.generate') }}" class="btn btn-groups">Grupos</a>
+                    <a href="{{ route('partidos.index') }}" class="btn btn-primary">Partidos</a>
                 </div>
             </div>
-        </form>
 
-        <div id="calendarPreview" class="mt-6"></div>
+            <div class="partidos-card">
+                @php
+                    $sessionGroups = session('generated_groups', null);
+                    $sessionGroupsTorneo = session('generated_groups_torneo', null);
+                @endphp
 
-        <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="bg-white p-4 rounded shadow">
-                <h3 class="font-semibold mb-2">Partidos generados (detalle)</h3>
-                <div id="matchesList" class="max-h-96 overflow-auto text-sm text-gray-800"></div>
+                <form id="generateCalendarForm" onsubmit="return false;">
+                    @csrf
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="form-label">Torneo</label>
+                            <select id="torneo_id" name="torneo_id" class="form-select" required>
+                                <option value="">Selecciona un torneo</option>
+                                @foreach(\App\Models\Torneo::all() as $t)
+                                    <option value="{{ $t->id }}"
+                                        {{ (int)old('torneo_id', $sessionGroupsTorneo ?? '') === $t->id ? 'selected' : '' }}>
+                                        {{ $t->deporte }} @if($t->numero_participantes) ({{ $t->numero_participantes }}) @endif
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="form-label">Fecha inicio</label>
+                            <input id="fecha_inicio" name="fecha_inicio" type="date"
+                                value="{{ old('fecha_inicio', optional(\App\Models\Torneo::find($sessionGroupsTorneo))->fecha_inicio ?? '') }}"
+                                class="form-control" required>
+                        </div>
+
+                        <div>
+                            <label class="form-label">Días entre jornadas</label>
+                            <input id="dias_entre" name="dias_entre" type="number" min="1" value="7" class="form-control">
+                        </div>
+
+                        <div>
+                            <label class="form-label">Programar en</label>
+                            <select id="tipo_horario" name="tipo_horario" class="form-select">
+                                <option value="todo">Todos los días</option>
+                                <option value="entre_semana">Entre semana (Lun-Vie)</option>
+                                <option value="fines_semana">Fines de semana (Sáb-Dom)</option>
+                            </select>
+                        </div>
+
+                        <div class="md:col-span-3">
+                            <label class="inline-flex items-center">
+                                <input id="use_groups" type="checkbox" class="form-checkbox" {{ $sessionGroups ? 'checked' : '' }}>
+                                <span class="ml-2 text-sm text-gray-200">Usar grupos guardados en sesión</span>
+                            </label>
+                        </div>
+
+                        <div class="flex items-end md:col-span-3">
+                            <button id="generateBtn" class="btn-generate">
+                                🗓 Generar calendario
+                            </button>
+                        </div>
+                    </div>
+                </form>
             </div>
 
-            <div class="bg-white p-4 rounded shadow">
-                <h3 class="font-semibold mb-2">Gráfico resumen / Tipo de torneo</h3>
-                <canvas id="matchesChart" height="220"></canvas>
-                <div id="tournamentGraphic" class="mt-4 text-sm text-gray-700"></div>
+            <div id="calendarPreview" class="calendar-preview"></div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="matches-list">
+                    <h3 class="font-semibold mb-2" style="color:#00c896;">Partidos generados (detalle)</h3>
+                    <div id="matchesList" class="max-h-96 overflow-auto text-sm"></div>
+                </div>
+
+                <div class="matches-summary">
+                    <h3 class="font-semibold mb-2" style="color:#00c896;">Gráfico resumen / Tipo de torneo</h3>
+                    <canvas id="matchesChart" height="220"></canvas>
+                    <div id="tournamentGraphic" class="mt-4 text-sm"></div>
+                </div>
             </div>
         </div>
     </div>
