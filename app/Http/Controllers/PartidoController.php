@@ -3,13 +3,10 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Models\Partido;
-use App\Models\Equipo;
-use App\Models\Grupo;
-use App\Models\Torneo;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
+use App\Models\Equipo;
+use App\Models\Partido;
 
 class PartidoController extends Controller
 {
@@ -245,64 +242,163 @@ class PartidoController extends Controller
      */
     public function saveSchedule(Request $request)
     {
-        $payload = $request->validate([
+        $request->validate([
             'torneo_id' => 'required|integer|exists:torneos,id',
-            'matches' => 'required|array',
-            'matches.*.local' => 'required',
-            'matches.*.visitante' => 'required',
-            'matches.*.fecha_iso' => 'nullable|date',
-            'matches.*.group_index' => 'nullable|integer',
+            'matches'   => 'array'
         ]);
 
-        $torneoId = $payload['torneo_id'];
-        $matches = $payload['matches'];
+        $torneoId = (int) $request->input('torneo_id');
+        $matches  = collect($request->input('matches', []));
 
+        $today = Carbon::today();
+
+        // Normalizar y filtrar duplicados (equipoA-equipoB en misma fecha)
+        $normalized = $matches->map(function ($m) use ($today) {
+            $fecha = Carbon::parse($m['fecha_iso'] ?? $m['fecha'] ?? $today)->startOfDay();
+            if ($fecha->lt($today)) $fecha = (clone $today);
+
+            $a = $m['local']; $b = $m['visitante'];
+            // Intentar resolver a IDs si vienen nombres
+            $aId = is_numeric($a) ? (int)$a : optional(Equipo::where('nombre', $a)->first())->id;
+            $bId = is_numeric($b) ? (int)$b : optional(Equipo::where('nombre', $b)->first())->id;
+
+            return [
+                'fecha' => $fecha->toDateString(),
+                'equipo1_id' => $aId,
+                'equipo2_id' => $bId,
+            ];
+        })->filter(fn($m) => $m['equipo1_id'] && $m['equipo2_id']);
+
+        // quitar duplicados por (fecha, minId, maxId)
+        $unique = $normalized->unique(function ($m) {
+            $a = min($m['equipo1_id'], $m['equipo2_id']);
+            $b = max($m['equipo1_id'], $m['equipo2_id']);
+            return $m['fecha'] . "|$a|$b";
+        })->values();
+
+        $saved = 0;
         DB::beginTransaction();
         try {
-            $saved = [];
-            foreach ($matches as $m) {
-                // resolver o crear equipos (por id o por nombre)
-                $resolveEquipo = function ($raw) use ($torneoId) {
-                    if (is_numeric($raw)) {
-                        return Equipo::find($raw);
-                    }
-                    return Equipo::firstOrCreate(
-                        ['nombre' => (string)$raw, 'torneo_id' => $torneoId],
-                        ['nombre' => (string)$raw, 'torneo_id' => $torneoId]
-                    );
-                };
+            foreach ($unique as $m) {
+                // evitar insertar si ya existe en DB el mismo cruce en la misma fecha (en cualquier orden)
+                $exists = Partido::where('torneo_id', $torneoId)
+                    ->whereDate('fecha', $m['fecha'])
+                    ->where(function ($q) use ($m) {
+                        $q->where(function ($w) use ($m) {
+                            $w->where('equipo1_id', $m['equipo1_id'])->where('equipo2_id', $m['equipo2_id']);
+                        })->orWhere(function ($w) use ($m) {
+                            $w->where('equipo1_id', $m['equipo2_id'])->where('equipo2_id', $m['equipo1_id']);
+                        });
+                    })->exists();
 
-                $equipo1 = $resolveEquipo($m['local']);
-                $equipo2 = $resolveEquipo($m['visitante']);
+                if ($exists) continue;
 
-                // grupo si aplica
-                $grupoId = null;
-                if (isset($m['group_index']) && $m['group_index'] !== null) {
-                    // intentar encontrar grupo por nombre/índice en el torneo
-                    $groupIndex = (int)$m['group_index'];
-                    $grupo = Grupo::where('torneo_id', $torneoId)->skip($groupIndex)->first();
-                    if ($grupo) $grupoId = $grupo->id;
-                }
-
-                // crear partido (si ya existe podemos actualizar por torneo+equipos+fecha)
-                $partido = new Partido();
-                $partido->equipo1_id = $equipo1 ? $equipo1->id : null;
-                $partido->equipo2_id = $equipo2 ? $equipo2->id : null;
-                $partido->torneo_id = $torneoId;
-                $partido->grupo_id = $grupoId;
-                $partido->fecha = $m['fecha_iso'] ?? null;
-                $partido->hora = $m['hora'] ?? null;
-                $partido->cancha = $m['cancha'] ?? null;
-                $partido->save();
-
-                $saved[] = $partido->load(['equipo1', 'equipo2', 'grupo']);
+                Partido::create([
+                    'torneo_id'   => $torneoId,
+                    'equipo1_id'  => $m['equipo1_id'],
+                    'equipo2_id'  => $m['equipo2_id'],
+                    'fecha'       => $m['fecha'],
+                    'estado'      => 'programado',
+                ]);
+                $saved++;
             }
-
             DB::commit();
-            return response()->json(['saved' => count($saved), 'partidos' => $saved], 201);
         } catch (\Throwable $e) {
             DB::rollBack();
             return response()->json(['error' => $e->getMessage()], 500);
         }
+
+        return response()->json(['saved' => $saved]);
+    }
+
+    // Vista pública (solo lectura)
+    public function publicIndex(Request $request)
+    {
+        $torneos = Torneo::orderByDesc('id')->get();
+        return view('public.partidos.index', compact('torneos'));
+    }
+
+    // Endpoint JSON: adapta los campos reales de la DB al formato usado por las vistas
+    public function indexJson(Request $request)
+    {
+        $torneoId = $request->input('torneo');
+        $type = 'liga'; // por defecto (no hay columna tipo en torneos en tus migraciones)
+
+        $matches = [];
+        if ($torneoId) {
+            // join a equipos y resultados para obtener nombres y marcadores
+            $rows = DB::table('partidos as p')
+                ->leftJoin('equipos as e1', 'p.equipo1_id', '=', 'e1.id')
+                ->leftJoin('equipos as e2', 'p.equipo2_id', '=', 'e2.id')
+                ->leftJoin('resultados as r', 'r.partido_id', '=', 'p.id')
+                ->where('p.torneo_id', $torneoId)
+                ->orderBy(DB::raw('COALESCE(p.fecha, p.created_at)'))
+                ->get([
+                    'p.id', 'p.fecha', 'p.hora', 'p.cancha', 'p.grupo_id',
+                    'p.equipo1_id', 'p.equipo2_id',
+                    DB::raw('e1.nombre as equipo1_nombre'),
+                    DB::raw('e2.nombre as equipo2_nombre'),
+                    'r.marcador_equipo1', 'r.marcador_equipo2'
+                ]);
+
+            foreach ($rows as $row) {
+                $fechaIso = $row->fecha ? substr((string)$row->fecha, 0, 10) : null;
+                $hasScore = $row->marcador_equipo1 !== null && $row->marcador_equipo2 !== null;
+                $matches[] = [
+                    'id' => $row->id,
+                    'fecha_iso' => $fechaIso,
+                    'hora' => $row->hora,
+                    'cancha' => $row->cancha,
+                    'local' => [ 'id' => $row->equipo1_id, 'nombre' => $row->equipo1_nombre ],
+                    'visitante' => [ 'id' => $row->equipo2_id, 'nombre' => $row->equipo2_nombre ],
+                    'local_score' => $row->marcador_equipo1,
+                    'visitante_score' => $row->marcador_equipo2,
+                    'estado' => $hasScore ? 'finalizado' : 'pendiente',
+                    'group_index' => null,
+                    'round' => null,
+                ];
+            }
+        }
+
+        return response()->json([
+            'matches' => $matches,
+            'type' => $type,
+        ]);
+    }
+
+    // Guardar/actualizar resultado en la tabla resultados (no altera la tabla partidos)
+    public function setResult(Partido $partido, Request $request)
+    {
+        $data = $request->validate([
+            'local_score' => ['nullable','integer','min:0'],
+            'visitante_score' => ['nullable','integer','min:0'],
+            'winner_mode' => ['nullable','string'], // no se persiste en DB; solo para UI
+            'winner' => ['nullable','in:local,visitante'], // idem
+        ]);
+
+        // upsert en resultados
+        $resultado = Resultado::firstOrNew(['partido_id' => $partido->id]);
+        $resultado->marcador_equipo1 = $data['local_score'] ?? null;
+        $resultado->marcador_equipo2 = $data['visitante_score'] ?? null;
+        $resultado->save();
+
+        // Normalizar respuesta como indexJson
+        $e1 = Equipo::find($partido->equipo1_id);
+        $e2 = Equipo::find($partido->equipo2_id);
+        $fechaIso = $partido->fecha ? substr((string)$partido->fecha, 0, 10) : null;
+
+        return response()->json([
+            'match' => [
+                'id' => $partido->id,
+                'fecha_iso' => $fechaIso,
+                'local' => [ 'id' => $partido->equipo1_id, 'nombre' => optional($e1)->nombre ],
+                'visitante' => [ 'id' => $partido->equipo2_id, 'nombre' => optional($e2)->nombre ],
+                'local_score' => $resultado->marcador_equipo1,
+                'visitante_score' => $resultado->marcador_equipo2,
+                'estado' => ($resultado->marcador_equipo1 !== null && $resultado->marcador_equipo2 !== null) ? 'finalizado' : 'pendiente',
+                'group_index' => null,
+                'round' => null,
+            ]
+        ]);
     }
 }

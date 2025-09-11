@@ -58,7 +58,6 @@
                     <a href="{{ route('torneos.index') }}">Ver Torneos</a>
                     <a href="{{ route('equipos.index') }}">Ver Equipos</a>
                     <a href="{{ route('partidos.index') }}">Ver Partidos</a>
-                    <a href="{{ route('resultados.index') }}">Ver Resultados</a>
                 </div>
             </div>
         </div>

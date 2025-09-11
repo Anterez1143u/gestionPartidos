@@ -224,8 +224,7 @@
                         </select>
                     </div>
                     <div class="md:col-span-3">
-                        <button id="generateScheduleBtn" class="btn-indigo w-full mt-2">Generar horario usando estos grupos</button>
-                        <!-- Nuevo botón para guardar directamente desde la vista -->
+                        <!-- Eliminado el botón de generar horario -->
                         <button id="saveCalendarNowBtn" type="button" class="btn-save w-full mt-2" style="margin-top:8px">Guardar calendario</button>
                     </div>
                 </div>
@@ -252,6 +251,31 @@
     (function(){
         // helpers y funciones definidas primero
         function escapeHtml(s){ return String(s).replace(/[&<>"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' })[c]); }
+        // Índice de nombres por ID para mostrar Equipo vs Equipo aunque vengan IDs
+        const nameById = new Map();
+        function rebuildNameIndex(){
+            nameById.clear();
+            if (Array.isArray(lastGroups)) {
+                lastGroups.forEach(g => g.forEach(t => {
+                    const id = (t && typeof t === 'object') ? t.id : t;
+                    const nombre = (t && typeof t === 'object') ? (t.nombre ?? t.name) : null;
+                    if (id != null && nombre) nameById.set(Number(id), String(nombre));
+                }));
+            }
+        }
+        function getTeamName(val){
+            // val puede ser objeto, número o string
+            if (val && typeof val === 'object') {
+                const id = val.id ?? null;
+                const nom = val.nombre ?? val.name ?? null;
+                if (nom) return String(nom);
+                if (id != null && nameById.has(Number(id))) return nameById.get(Number(id));
+                return String(id ?? '');
+            }
+            const num = Number(val);
+            if (!Number.isNaN(num) && nameById.has(num)) return nameById.get(num);
+            return String(val ?? '');
+        }
 
         const normalizeDate = (d) => {
             if (!d) return null;
@@ -397,15 +421,11 @@
             serverGroupsEl.querySelectorAll('[data-group-index]').forEach(div => {
                 const items = [];
                 div.querySelectorAll('li').forEach(li => {
-                    // almacenar como objeto {id, nombre}
-                    items.push({
-                        id: li.getAttribute('data-team') || null,
-                        nombre: li.textContent.trim()
-                    });
+                    items.push({ id: li.getAttribute('data-team') || null, nombre: li.textContent.trim() });
                 });
                 groups.push(items);
             });
-            if (groups.length) lastGroups = groups;
+            if (groups.length) { lastGroups = groups; rebuildNameIndex(); }
         }
 
         // cuando el formulario devuelve json.groups (ahora objetos {id,nombre}), renderizar preview acorde
@@ -422,6 +442,7 @@
                 const json = await res.json();
                 if (json.groups) {
                     lastGroups = json.groups;
+                    rebuildNameIndex();
                     // render preview (cada item puede ser {id,nombre})
                     let html = '<div class="bg-white rounded shadow p-4 space-y-3">';
                     json.groups.forEach((g, i) => {
@@ -446,53 +467,55 @@
         });
 
         // generar horario: cuando se envía al servidor, enviar solo arrays de ids en payload.groups
-        scheduleBtn.addEventListener('click', async (e) => {
-            e.preventDefault();
-            resultado.innerHTML = '<div class="p-3 bg-gray-50 rounded">Generando horario…</div>';
-            if (!lastGroups || !lastGroups.length) {
-                const serverHas = serverGroupsEl && serverGroupsEl.querySelectorAll('[data-group_index]').length > 0;
-                if (!serverHas) {
-                    resultado.innerHTML = '<div class="p-3 bg-yellow-50 text-yellow-700 rounded">No hay grupos generados. Genera los grupos antes.</div>';
-                    return;
-                }
-            }
-            const rawDate = document.getElementById('fecha_inicio_sched').value;
-            const fecha_inicio = normalizeDate(rawDate);
-
-            // transformar lastGroups (array de objetos) en arrays de ids
-            const groupsIds = (Array.isArray(lastGroups) ? lastGroups : []).map(g => {
-                return g.map(t => (t && t.id) ? Number(t.id) : (Number(t) || null));
-            });
-
-            const payload = {
-                torneo_id: document.getElementById('torneo_id').value,
-                fecha_inicio,
-                dias_entre: document.getElementById('dias_entre_sched').value || 7,
-                tipo_horario: document.getElementById('tipo_horario_sched').value || 'todo',
-                groups: groupsIds
-            };
-            try {
-                const res = await postJson("{{ route('partidos.generateCalendar') }}", payload);
-                if (!res.ok) {
-                    if (res.text) {
-                        resultado.innerHTML = `<div class="p-3 bg-red-50 text-red-700 rounded">Error servidor (HTML):<pre style="white-space:pre-wrap;max-height:200px;overflow:auto">${escapeHtml(res.text)}</pre></div>`;
-                        console.error('Respuesta HTML del servidor:', res.text);
-                    } else if (res.json && res.json.error) {
-                        resultado.innerHTML = `<div class="p-3 bg-red-50 text-red-700 rounded">${escapeHtml(JSON.stringify(res.json.error))}</div>`;
-                    } else {
-                        resultado.innerHTML = `<div class="p-3 bg-red-50 text-red-700 rounded">Error status ${res.status}</div>`;
+        if (scheduleBtn) {
+            scheduleBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                resultado.innerHTML = '<div class="p-3 bg-gray-50 rounded">Generando horario…</div>';
+                if (!lastGroups || !lastGroups.length) {
+                    const serverHas = serverGroupsEl && serverGroupsEl.querySelectorAll('[data-group-index]').length > 0;
+                    if (!serverHas) {
+                        resultado.innerHTML = '<div class="p-3 bg-yellow-50 text-yellow-700 rounded">No hay grupos generados. Genera los grupos antes.</div>';
+                        return;
                     }
-                    return;
                 }
-                const json = res.json || {};
-                renderScheduleResult(json.matches || []);
-                // guardar matches en variable global y mostrar botón Guardar
-                window.__lastGeneratedMatches = json.matches || [];
-                toggleSaveButton(window.__lastGeneratedMatches.length > 0);
-            } catch (err) {
-                resultado.innerHTML = '<div class="p-3 bg-red-50 text-red-700 rounded">Error: ' + err.message + '</div>';
-            }
-        });
+                const rawDate = document.getElementById('fecha_inicio_sched').value;
+                const fecha_inicio = normalizeDate(rawDate);
+
+                // transformar lastGroups (array de objetos) en arrays de ids
+                const groupsIds = (Array.isArray(lastGroups) ? lastGroups : []).map(g => {
+                    return g.map(t => (t && t.id) ? Number(t.id) : (Number(t) || null));
+                });
+
+                const payload = {
+                    torneo_id: document.getElementById('torneo_id').value,
+                    fecha_inicio,
+                    dias_entre: document.getElementById('dias_entre_sched').value || 7,
+                    tipo_horario: document.getElementById('tipo_horario_sched').value || 'todo',
+                    groups: groupsIds
+                };
+                try {
+                    const res = await postJson("{{ route('partidos.generateCalendar') }}", payload);
+                    if (!res.ok) {
+                        if (res.text) {
+                            resultado.innerHTML = `<div class="p-3 bg-red-50 text-red-700 rounded">Error servidor (HTML):<pre style="white-space:pre-wrap;max-height:200px;overflow:auto">${escapeHtml(res.text)}</pre></div>`;
+                            console.error('Respuesta HTML del servidor:', res.text);
+                        } else if (res.json && res.json.error) {
+                            resultado.innerHTML = `<div class="p-3 bg-red-50 text-red-700 rounded">${escapeHtml(JSON.stringify(res.json.error))}</div>`;
+                        } else {
+                            resultado.innerHTML = `<div class="p-3 bg-red-50 text-red-700 rounded">Error status ${res.status}</div>`;
+                        }
+                        return;
+                    }
+                    const json = res.json || {};
+                    renderScheduleResult(json.matches || []);
+                    // guardar matches en variable global y mostrar botón Guardar
+                    window.__lastGeneratedMatches = json.matches || [];
+                    toggleSaveButton(window.__lastGeneratedMatches.length > 0);
+                } catch (err) {
+                    resultado.innerHTML = '<div class="p-3 bg-red-50 text-red-700 rounded">Error: ' + err.message + '</div>';
+                }
+            });
+        }
 
         // mostrar botón Guardar cuando haya matches generados en UI
         function toggleSaveButton(visible) {
@@ -554,38 +577,32 @@
         function renderScheduleResult(matches) {
             window.__lastGeneratedMatches = Array.isArray(matches) ? matches : [];
             toggleSaveButton(window.__lastGeneratedMatches.length > 0);
-
             const container = document.getElementById('scheduleResult');
             if (!container) return;
-
             if (!window.__lastGeneratedMatches.length) {
                 container.innerHTML = '<div class="p-3 bg-yellow-50 text-yellow-900 rounded">No hay partidos generados.</div>';
                 return;
             }
-
-            // agrupar por fecha_iso si existe, sino por fecha
             const byDate = {};
             window.__lastGeneratedMatches.forEach(m => {
                 const key = m.fecha_iso || (m.fecha && m.fecha_iso === undefined ? m.fecha : (m.date || 'sin fecha'));
                 if (!byDate[key]) byDate[key] = [];
                 byDate[key].push(m);
             });
-
             let html = '<div class="space-y-4">';
             Object.keys(byDate).sort().forEach(d => {
                 const ms = byDate[d];
                 html += `<div class="text-sm text-indigo-100"><strong>${escapeHtml(d)}</strong> — ${ms.length} partido(s)</div>`;
                 html += '<ul class="pl-5 text-sm">';
                 ms.forEach(it => {
-                    const local = (typeof it.local === 'object' ? (it.local.nombre || it.local.id || '') : (it.local ?? '')) ;
-                    const visitante = (typeof it.visitante === 'object' ? (it.visitante.nombre || it.visitante.id || '') : (it.visitante ?? ''));
+                    const localName = getTeamName(it.local);
+                    const visitanteName = getTeamName(it.visitante);
                     const grp = (it.group_index !== undefined) ? ` <span class="text-xs text-gray-300">(grupo ${Number(it.group_index)+1})</span>` : '';
-                    html += `<li>${escapeHtml(String(local))} vs ${escapeHtml(String(visitante))}${grp}</li>`;
+                    html += `<li>${escapeHtml(localName)} vs ${escapeHtml(visitanteName)}${grp}</li>`;
                 });
                 html += '</ul>';
             });
             html += '</div>';
-
             container.innerHTML = html;
         }
 

@@ -18,6 +18,7 @@
         .badge { background:#0b5560; color:#bff3e6; padding:6px 8px; border-radius:8px; font-weight:700; }
         .center { text-align:center; }
         .muted { color:#7eaab2; font-size:0.9rem; }
+        .hidden { display:none; }
     </style>
 
     <div class="container">
@@ -90,7 +91,11 @@
 
     <script>
     (function(){
-        const token = document.querySelector('input[name=_token]') ? document.querySelector('input[name=_token]').value : '';
+        // token robusto: meta, input oculto o window.Laravel
+        const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+            || document.querySelector('input[name=_token]')?.value
+            || (window.Laravel && window.Laravel.csrfToken)
+            || '';
         const loadBtn = document.getElementById('loadBtn');
         const filterTorneo = document.getElementById('filterTorneo');
         const filterType = document.getElementById('filterType');
@@ -114,6 +119,12 @@
             });
             return by;
         }
+        function formatDateBadge(dateStr){
+            if(!dateStr || dateStr==='Sin fecha') return 'Sin fecha';
+            const parts = dateStr.split('-');
+            if(parts.length===3){ return `${parts[2]}/${parts[1]}/${parts[0]}`; }
+            try { const d = new Date(dateStr); return d.toLocaleDateString('es-ES'); } catch { return dateStr; }
+        }
 
         // render partidos agrupados por fecha
         function renderMatches(matches){
@@ -129,18 +140,19 @@
             const byDate = groupByDate(currentMatches);
             let html = '';
             Object.keys(byDate).sort().forEach(date=>{
-                html += `<div style="margin-bottom:12px;"><div style="margin-bottom:8px;"><span class="badge">${escapeHtml(date)}</span></div>`;
+                html += `<div style="margin-bottom:12px;"><div style="margin-bottom:8px;"><span class="badge">${escapeHtml(formatDateBadge(date))}</span></div>`;
                 byDate[date].forEach(m=>{
                     const localName = (m.local && (m.local.nombre||m.local.name)) || (m.local_nombre || 'Local');
                     const visitName = (m.visitante && (m.visitante.nombre||m.visitante.name)) || (m.visitante_nombre || 'Visitante');
-                    const localScore = (m.local_score !== undefined) ? m.local_score : '';
-                    const visitScore = (m.visitante_score !== undefined) ? m.visitante_score : '';
+                    const localScore = (m.local_score !== undefined && m.local_score !== null) ? m.local_score : '';
+                    const visitScore = (m.visitante_score !== undefined && m.visitante_score !== null) ? m.visitante_score : '';
                     const estado = m.estado || '';
-                    // componente
+                    const hora = m.hora ? ` — ${escapeHtml(String(m.hora).slice(0,5))}` : '';
+                    const cancha = m.cancha ? ` · Cancha: ${escapeHtml(m.cancha)}` : '';
                     html += `<div class="match" data-match-id="${m.id}">
                         <div class="info">
-                            <div><strong>${escapeHtml(localName)}</strong> <span class="small">vs</span> <strong>${escapeHtml(visitName)}</strong> ${m.group_index !== undefined ? `<span class="small"> (grupo ${m.group_index+1})</span>` : ''}</div>
-                            <div class="small muted">${escapeHtml(estado)}</div>
+                            <div><strong>${escapeHtml(localName)}</strong> <span class="small">vs</span> <strong>${escapeHtml(visitName)}</strong> ${m.group_index !== undefined && m.group_index !== null ? `<span class="small"> (grupo ${m.group_index+1})</span>` : ''}</div>
+                            <div class="small muted">${escapeHtml(estado)}${hora}${cancha}</div>
                         </div>
                         <div style="display:flex; gap:8px; align-items:center;">
                             <input type="number" min="0" class="local-score" style="width:72px" value="${escapeHtml(localScore)}" placeholder="0">
@@ -297,7 +309,8 @@
                     headers: {
                         'X-CSRF-TOKEN': token,
                         'Content-Type':'application/json',
-                        'Accept':'application/json'
+                        'Accept':'application/json',
+                        'X-Requested-With':'XMLHttpRequest'
                     },
                     body: JSON.stringify(payload)
                 });
@@ -330,39 +343,44 @@
             }
         }
 
-        // request al servidor para obtener partidos del torneo seleccionado
+        // request al servidor para obtener partidos del torneo seleccionado (robustecida)
         async function loadMatches(){
             const torneo = filterTorneo.value;
             if(!torneo){ alert('Selecciona un torneo.'); return; }
             const typeFilter = filterType.value;
             matchesByDate.innerHTML = '<div class="muted">Cargando…</div>';
+            const prevText = loadBtn.textContent; loadBtn.textContent = 'Cargando…'; loadBtn.disabled = true;
             try{
-                const res = await fetch(`/admin/partidos?torneo=${encodeURIComponent(torneo)}&format=json`, { headers:{ Accept:'application/json' }});
+                const endpoint = "{{ route('partidos.index.json') }}";
+                const url = endpoint + '?torneo=' + encodeURIComponent(torneo);
+                const res = await fetch(url, { headers:{ Accept:'application/json', 'X-Requested-With':'XMLHttpRequest' } });
+                const contentType = res.headers.get('content-type') || '';
+                if(!contentType.includes('application/json')){
+                    const txt = await res.text();
+                    matchesByDate.innerHTML = `<div class=\"muted\">Respuesta no JSON (status ${res.status}) desde ${escapeHtml(url)}<pre style=\"white-space:pre-wrap;max-height:240px;overflow:auto;margin-top:8px;\">${escapeHtml(txt)}</pre></div>`;
+                    return;
+                }
                 if(!res.ok){
                     const txt = await res.text();
-                    matchesByDate.innerHTML = `<div class="muted">Error servidor: ${escapeHtml(txt)}</div>`;
+                    matchesByDate.innerHTML = `<div class=\"muted\">Error servidor (${res.status}): ${escapeHtml(txt)}</div>`;
                     return;
                 }
                 const json = await res.json();
-                // se espera { matches: [...], type: 'liga'|'eliminatoria' }
                 currentType = json.type || 'liga';
-                let matches = json.matches || [];
+                let matches = Array.isArray(json.matches) ? json.matches : [];
                 if(typeFilter === 'pendientes') matches = matches.filter(m => !m.estado || m.estado === 'pendiente' || m.estado === 'pending');
                 else if(typeFilter === 'finalizados') matches = matches.filter(m => m.estado === 'finalizado' || m.estado === 'done' || (m.local_score !== undefined && m.visitante_score !== undefined));
                 renderMatches(matches);
             }catch(err){
-                matchesByDate.innerHTML = `<div class="muted">Error: ${escapeHtml(err.message)}</div>`;
+                matchesByDate.innerHTML = `<div class=\"muted\">Error de red: ${escapeHtml(err.message)}</div>`;
+            } finally {
+                loadBtn.textContent = prevText; loadBtn.disabled = false;
             }
         }
 
         loadBtn.addEventListener('click', loadMatches);
-
-        // carga inicial si sólo hay un torneo en el select
-        if(filterTorneo.options.length === 2){
-            filterTorneo.selectedIndex = 1;
-            loadMatches();
-        }
-
+        [filterTorneo, filterType].forEach(el => el && el.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); loadMatches(); }}));
+        if(filterTorneo.options.length===2){ filterTorneo.selectedIndex=1; loadMatches(); }
     })();
     </script>
 </x-app-layout>

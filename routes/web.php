@@ -12,6 +12,31 @@ Route::get('/', function () {
     return view('welcome');
 });
 
+// Rutas públicas (no requieren login) — solo lectura
+Route::get('/torneos', function () {
+    $torneos = \App\Models\Torneo::orderByDesc('created_at')->paginate(20);
+    return view('public.torneos.index', compact('torneos'));
+})->name('public.torneos');
+
+Route::get('/equipos', function () {
+    $equipos = \App\Models\Equipo::with('torneo:id,deporte,nombre')
+        ->orderByDesc('created_at')->paginate(24);
+    return view('public.equipos.index', compact('equipos'));
+})->name('public.equipos');
+
+Route::get('/partidos', function () {
+    $torneoId = request('torneo');
+    $estado = request('estado'); // pendiente|en_curso|finalizado|programado|todos
+    $q = \App\Models\Partido::with(['equipo1:id,nombre', 'equipo2:id,nombre', 'torneo:id,deporte,nombre'])
+        ->when($torneoId, fn($qq)=>$qq->where('torneo_id', $torneoId))
+        ->when($estado && $estado !== 'todos', fn($qq)=>$qq->where('estado', $estado))
+        ->orderBy('fecha')->orderBy('hora');
+
+    $partidos = $q->paginate(20)->withQueryString();
+    $torneos = \App\Models\Torneo::orderByDesc('created_at')->get(['id','deporte','nombre']);
+    return view('public.partidos.index', compact('partidos','torneos','torneoId','estado'));
+})->name('public.partidos');
+
 Route::get('/dashboard', function () {
     return view('dashboard');
 })->middleware(['auth', 'verified'])->name('dashboard');
@@ -39,7 +64,15 @@ Route::middleware(['auth', \App\Http\Middleware\CheckRole::class . ':admin'])->g
     Route::post('/admin/partidos/save-schedule', [\App\Http\Controllers\PartidoController::class, 'saveSchedule'])->name('partidos.saveSchedule');
     // ruta para ver partidos (asegúrate que exista PartidoController@index)
     Route::get('/admin/partidos', [PartidoController::class, 'index'])->name('partidos.index');
+    // Endpoint JSON dedicado para la vista de partidos
+    Route::get('/admin/partidos-json', [PartidoController::class, 'indexJson'])->name('partidos.index.json');
+    // Guardar resultado de un partido (usado por la vista admin)
+    Route::post('/admin/partidos/{partido}/set-result', [PartidoController::class, 'setResult'])->name('partidos.setResult');
 });
+
+// Rutas públicas: ver partidos y JSON sin login (solo lectura)
+Route::get('/ver-partidos', [PartidoController::class, 'publicIndex'])->name('public.partidos');
+Route::get('/partidos-json', [PartidoController::class, 'indexJson'])->name('public.partidos.json');
 
 // Solo para participantes autenticados
 Route::middleware(['auth'])->group(function () {
