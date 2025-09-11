@@ -172,8 +172,8 @@
                     </div>
                     <div class="flex items-end md:col-span-3">
                         <div class="w-full grid grid-cols-2 gap-2">
-                            <button id="generateBtn" class="btn-generate">Generar calendario</button>
-                            <button id="saveScheduleBtn" class="btn-save" style="display:none">Guardar calendario</button>
+                            <button id="generateBtn" class="btn-generate">Generar grupos</button>
+                            <button id="saveScheduleBtn" class="btn-save" style="display:none">Guardar grupos</button>
                         </div>
                     </div>
                 </div>
@@ -181,13 +181,17 @@
 
             <div id="preview" class="preview-card mt-6">
                 @if(!empty($groups))
-                    <div class="bg-white rounded shadow p-4 space-y-3" id="serverGroups">
+                    <div class="bg-white rounded shadow p-4" id="serverGroups">
                         @foreach($groups as $i => $g)
                             <div data-group-index="{{ $i }}">
                                 <strong>Grupo {{ $i + 1 }}</strong>
                                 <ul class="list-disc pl-5 mt-1">
                                     @foreach($g as $team)
-                                        <li data-team="{{ e($team) }}">{{ e($team) }}</li>
+                                        @if(is_array($team) || is_object($team))
+                                            <li data-team="{{ e($team['id'] ?? $team->id ?? '') }}">{{ e($team['nombre'] ?? $team->nombre ?? '') }}</li>
+                                        @else
+                                            <li data-team="{{ e($team) }}">{{ e($team) }}</li>
+                                        @endif
                                     @endforeach
                                 </ul>
                             </div>
@@ -221,6 +225,8 @@
                     </div>
                     <div class="md:col-span-3">
                         <button id="generateScheduleBtn" class="btn-indigo w-full mt-2">Generar horario usando estos grupos</button>
+                        <!-- Nuevo botón para guardar directamente desde la vista -->
+                        <button id="saveCalendarNowBtn" type="button" class="btn-save w-full mt-2" style="margin-top:8px">Guardar calendario</button>
                     </div>
                 </div>
                 <div id="scheduleResult" class="mt-4"></div>
@@ -390,52 +396,19 @@
             const groups = [];
             serverGroupsEl.querySelectorAll('[data-group-index]').forEach(div => {
                 const items = [];
-                div.querySelectorAll('li').forEach(li => items.push(li.getAttribute('data-team') || li.textContent.trim()));
+                div.querySelectorAll('li').forEach(li => {
+                    // almacenar como objeto {id, nombre}
+                    items.push({
+                        id: li.getAttribute('data-team') || null,
+                        nombre: li.textContent.trim()
+                    });
+                });
                 groups.push(items);
             });
             if (groups.length) lastGroups = groups;
         }
 
-        // si hay grupos precargados y fecha, generar preview automáticamente
-        function tryAutoPreview() {
-            const fecha = document.getElementById('fecha_inicio_sched').value;
-            if (!fecha) return;
-            if (!lastGroups || !lastGroups.length) return;
-            const dias = document.getElementById('dias_entre_sched').value || 7;
-            const tipo = document.getElementById('tipo_horario_sched').value || 'todo';
-            const matches = generateSchedulePreview(lastGroups, fecha, dias, tipo);
-            renderScheduleResult(matches, true);
-            updateViewMatchesVisibility();
-        }
-
-        function renderScheduleResult(matches, fromPreview = false) {
-            if (!matches || !matches.length) {
-                resultado.innerHTML = '<div class="p-3 text-sm text-gray-600">No hay partidos generados.</div>';
-                return;
-            }
-            let html = '<div class="bg-white rounded shadow p-4">';
-            const counts = {};
-            matches.forEach(m => {
-                html += `<div class="border-b py-2"><strong>${escapeHtml(m.fecha)}</strong> — ${escapeHtml(m.local)} <span class="text-xs text-gray-400">vs</span> ${escapeHtml(m.visitante)} <span class="text-sm text-gray-500"> (grupo ${Number(m.group_index)+1})</span></div>`;
-                counts[m.fecha] = (counts[m.fecha] || 0) + 1;
-            });
-            html += '</div>';
-            // gráfico simple de barras inline
-            html += '<div class="mt-4">';
-            Object.keys(counts).forEach(date => {
-                const n = counts[date];
-                html += `<div class="mb-2 text-xs"><strong>${escapeHtml(date)}</strong> — ${n} partidos<div class="h-2 bg-gray-200 rounded mt-1"><div style="width:${Math.min(100,n*10)}%" class="h-2 bg-green-500 rounded"></div></div></div>`;
-            });
-            html += '</div>';
-            resultado.innerHTML = html;
-            if (!fromPreview) {
-                // si fue generación real, permitimos ver partidos
-                const viewBtn = document.getElementById('viewMatchesBtn');
-                if (viewBtn) viewBtn.style.display = 'inline-block';
-            }
-        }
-
-        // manejar formulario generación de grupos (POST)
+        // cuando el formulario devuelve json.groups (ahora objetos {id,nombre}), renderizar preview acorde
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             preview.innerHTML = '<div class="p-4 bg-gray-50 rounded">Generando…</div>';
@@ -449,10 +422,16 @@
                 const json = await res.json();
                 if (json.groups) {
                     lastGroups = json.groups;
-                    // render preview
+                    // render preview (cada item puede ser {id,nombre})
                     let html = '<div class="bg-white rounded shadow p-4 space-y-3">';
                     json.groups.forEach((g, i) => {
-                        html += `<div data-group-index="${i}"><strong>Grupo ${i+1}</strong><ul class="list-disc pl-5 mt-1">${g.map(t=>`<li data-team="${escapeHtml(t)}">${escapeHtml(t)}</li>`).join('')}</ul></div>`;
+                        html += `<div data-group-index="${i}"><strong>Grupo ${i+1}</strong><ul class="list-disc pl-5 mt-1">` +
+                                g.map(t => {
+                                    const id = (t && (t.id !== undefined)) ? t.id : t;
+                                    const name = (t && (t.nombre !== undefined)) ? t.nombre : t;
+                                    return `<li data-team="${escapeHtml(String(id))}">${escapeHtml(String(name))}</li>`;
+                                }).join('') +
+                                `</ul></div>`;
                     });
                     html += '</div>';
                     preview.innerHTML = html;
@@ -466,7 +445,7 @@
             }
         });
 
-        // manejar click generar horario (envío al controlador)
+        // generar horario: cuando se envía al servidor, enviar solo arrays de ids en payload.groups
         scheduleBtn.addEventListener('click', async (e) => {
             e.preventDefault();
             resultado.innerHTML = '<div class="p-3 bg-gray-50 rounded">Generando horario…</div>';
@@ -479,12 +458,18 @@
             }
             const rawDate = document.getElementById('fecha_inicio_sched').value;
             const fecha_inicio = normalizeDate(rawDate);
+
+            // transformar lastGroups (array de objetos) en arrays de ids
+            const groupsIds = (Array.isArray(lastGroups) ? lastGroups : []).map(g => {
+                return g.map(t => (t && t.id) ? Number(t.id) : (Number(t) || null));
+            });
+
             const payload = {
                 torneo_id: document.getElementById('torneo_id').value,
                 fecha_inicio,
                 dias_entre: document.getElementById('dias_entre_sched').value || 7,
                 tipo_horario: document.getElementById('tipo_horario_sched').value || 'todo',
-                groups: lastGroups
+                groups: groupsIds
             };
             try {
                 const res = await postJson("{{ route('partidos.generateCalendar') }}", payload);
@@ -564,6 +549,66 @@
             }
         }
 
+        // ---------- FUNCIONES AÑADIDAS: renderScheduleResult y tryAutoPreview ----------
+        // renderScheduleResult: muestra lista simple de partidos y agrupa por fecha
+        function renderScheduleResult(matches) {
+            window.__lastGeneratedMatches = Array.isArray(matches) ? matches : [];
+            toggleSaveButton(window.__lastGeneratedMatches.length > 0);
+
+            const container = document.getElementById('scheduleResult');
+            if (!container) return;
+
+            if (!window.__lastGeneratedMatches.length) {
+                container.innerHTML = '<div class="p-3 bg-yellow-50 text-yellow-900 rounded">No hay partidos generados.</div>';
+                return;
+            }
+
+            // agrupar por fecha_iso si existe, sino por fecha
+            const byDate = {};
+            window.__lastGeneratedMatches.forEach(m => {
+                const key = m.fecha_iso || (m.fecha && m.fecha_iso === undefined ? m.fecha : (m.date || 'sin fecha'));
+                if (!byDate[key]) byDate[key] = [];
+                byDate[key].push(m);
+            });
+
+            let html = '<div class="space-y-4">';
+            Object.keys(byDate).sort().forEach(d => {
+                const ms = byDate[d];
+                html += `<div class="text-sm text-indigo-100"><strong>${escapeHtml(d)}</strong> — ${ms.length} partido(s)</div>`;
+                html += '<ul class="pl-5 text-sm">';
+                ms.forEach(it => {
+                    const local = (typeof it.local === 'object' ? (it.local.nombre || it.local.id || '') : (it.local ?? '')) ;
+                    const visitante = (typeof it.visitante === 'object' ? (it.visitante.nombre || it.visitante.id || '') : (it.visitante ?? ''));
+                    const grp = (it.group_index !== undefined) ? ` <span class="text-xs text-gray-300">(grupo ${Number(it.group_index)+1})</span>` : '';
+                    html += `<li>${escapeHtml(String(local))} vs ${escapeHtml(String(visitante))}${grp}</li>`;
+                });
+                html += '</ul>';
+            });
+            html += '</div>';
+
+            container.innerHTML = html;
+        }
+
+        // tryAutoPreview: si hay grupos en lastGroups genera una preview local y la muestra
+        function tryAutoPreview() {
+            try {
+                if (!Array.isArray(lastGroups) || lastGroups.length === 0) return;
+                const rawDate = document.getElementById('fecha_inicio_sched').value || null;
+                const fecha_inicio = normalizeDate(rawDate) || new Date().toISOString().slice(0,10);
+                const dias = document.getElementById('dias_entre_sched') ? document.getElementById('dias_entre_sched').value || 7 : 7;
+                const tipo = document.getElementById('tipo_horario_sched') ? document.getElementById('tipo_horario_sched').value || 'todo' : 'todo';
+
+                // transformar lastGroups ({id,nombre}) en arrays de ids para el generador cliente
+                const groupsIds = lastGroups.map(g => g.map(t => (t && t.id) ? t.id : t));
+
+                const previewMatches = generateSchedulePreview(groupsIds, fecha_inicio, dias, tipo);
+                renderScheduleResult(previewMatches);
+            } catch (e) {
+                console.error('tryAutoPreview error', e);
+            }
+        }
+        // ------------------------------------------------------------------------------
+
         // enganchar botón Guardar: ahora abre modal de confirmación
         document.getElementById('saveScheduleBtn').addEventListener('click', async () => {
             const matches = window.__lastGeneratedMatches || [];
@@ -611,6 +656,46 @@
             const val = e.target.value;
             if (val) fetchSavedMatches(val);
             else { /* limpiar previews */ }
+        });
+
+        // Nuevo handler: botón "Guardar calendario" visible en la vista.
+        document.getElementById('saveCalendarNowBtn').addEventListener('click', async (e) => {
+            e.preventDefault();
+            // si ya existen matches generados en memoria, los usamos
+            let matches = window.__lastGeneratedMatches || [];
+            if (!matches || matches.length === 0) {
+                // intentar generar cliente-side usando grupos disponibles y la fecha seleccionada
+                const fecha = document.getElementById('fecha_inicio_sched').value;
+                if (!fecha) return alert('Selecciona una fecha de inicio o genera el horario antes.');
+                const dias = document.getElementById('dias_entre_sched').value || 7;
+                const tipo = document.getElementById('tipo_horario_sched').value || 'todo';
+
+                const groupsSource = lastGroups && lastGroups.length ? lastGroups : (function(){
+                    if (!serverGroupsEl) return [];
+                    const g = [];
+                    serverGroupsEl.querySelectorAll('[data-group-index]').forEach(div => {
+                        const items = [];
+                        div.querySelectorAll('li').forEach(li => items.push(li.getAttribute('data-team') || li.textContent.trim()));
+                        g.push(items);
+                    });
+                    return g;
+                })();
+
+                if (!groupsSource || !groupsSource.length) return alert('No hay grupos disponibles para generar partidos.');
+                matches = generateSchedulePreview(groupsSource, fecha, dias, tipo);
+                if (!matches || !matches.length) return alert('No se pudieron generar partidos con los datos actuales.');
+                // almacenar para posible uso posterior
+                window.__lastGeneratedMatches = matches;
+            }
+
+            // mostrar resumen en modal (reutiliza modal de confirmación ya existente)
+            const summaryEl = document.getElementById('confirmSummary');
+            const torneoEl = document.getElementById('torneo_id');
+            const torneoText = torneoEl ? torneoEl.options[torneoEl.selectedIndex]?.text || '' : '';
+            summaryEl.innerHTML = `<div class="mb-2"><strong>Torneo:</strong> ${escapeHtml(torneoText)}</div>
+                                   <div class="mb-2"><strong>Partidos a guardar:</strong> ${matches.length}</div>
+                                   <div class="text-xs text-gray-600">Confirma que deseas persistir estos partidos en la base de datos.</div>`;
+            showConfirmModal();
         });
 
         // mostrar preview automático si hay datos al cargar

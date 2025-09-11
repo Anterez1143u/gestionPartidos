@@ -46,9 +46,12 @@ class GrupoController extends Controller
             'tipo' => 'nullable|in:grupos,llaves',
         ]);
 
-        $equipos = Equipo::where('torneo_id', $request->torneo_id)->pluck('nombre')->toArray();
+        // obtener id y nombre para poder enviar ambos al cliente
+        $equipos = Equipo::where('torneo_id', $request->torneo_id)->get(['id', 'nombre'])->toArray();
         shuffle($equipos);
         $size = max(2, (int)($request->equipos_por_grupo ?: 4));
+
+        // groups será array de arrays con items {id,nombre}
         $groups = array_chunk($equipos, $size);
 
         // Guardar en sesión para persistir tras recarga
