@@ -20,4 +20,18 @@ class Torneo extends Model
         'fecha_fin',
         'descripcion',
     ];
+
+    // Guardar siempre 'futboll'; acepta sinónimos de entrada
+    public function setDeporteAttribute($value)
+    {
+        $v = strtolower(trim((string) $value));
+        $map = [
+            'futbol' => 'futboll',
+            'fútbol' => 'futboll',
+            'utboll' => 'futboll',
+            'voley' => 'voley',
+            'baloncesto' => 'baloncesto',
+        ];
+        $this->attributes['deporte'] = $map[$v] ?? $v;
+    }
 }

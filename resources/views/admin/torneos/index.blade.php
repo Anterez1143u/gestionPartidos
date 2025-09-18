@@ -129,6 +129,16 @@
         }
     </style>
     <div class="torneos-bg">
+        @if(session('success'))
+            <div style="background:#133a2f;border:1px solid #00c896;color:#dffaf1;border-radius:12px;padding:10px 12px;margin-bottom:12px;">
+                {{ session('success') }}
+            </div>
+        @endif
+        @if(session('error'))
+            <div style="background:#3a1f28;border:1px solid #b71c1c;color:#ffd7d7;border-radius:12px;padding:10px 12px;margin-bottom:12px;">
+                {{ session('error') }}
+            </div>
+        @endif
         <div class="container">
             <div class="header">
                 <h1>Torneos</h1>
@@ -141,12 +151,6 @@
                     </a>
                 </div>
             </div>
-
-            @if(session('success'))
-                <div class="card-empty" style="background:#00c896;color:#fff;">
-                    {{ session('success') }}
-                </div>
-            @endif
 
             @if($torneos->isEmpty())
                 <div class="card-empty">
@@ -195,7 +199,7 @@
                                 <a href="{{ route('torneos.edit', $torneo) }}" class="btn btn-edit">
                                     ✏️ Editar
                                 </a>
-                                <form action="{{ route('torneos.destroy', $torneo) }}" method="POST" class="inline-block" style="display:inline;" onsubmit="return confirm('¿Eliminar torneo?');">
+                                <form action="{{ route('torneos.destroy', $torneo) }}" method="POST" onsubmit="return confirm('¿Eliminar este torneo?')">
                                     @csrf
                                     @method('DELETE')
                                     <button type="submit" class="btn btn-delete">

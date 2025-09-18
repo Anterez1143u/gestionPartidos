@@ -117,13 +117,9 @@
                         <label for="deporte" class="form-label">Deporte *</label>
                         <select id="deporte" name="deporte" class="form-select">
                             <option value="">Selecciona un deporte</option>
-                            <option value="futbol" {{ old('deporte') == 'futbol' ? 'selected' : '' }}>Fútbol</option>
-                            <option value="baloncesto" {{ old('deporte') == 'baloncesto' ? 'selected' : '' }}>Baloncesto
-                            </option>
-                            <option value="voley" {{ old('deporte') == 'voley' ? 'selected' : '' }}>Vóley</option>
-                            <option value="tenis" {{ old('deporte') == 'tenis' ? 'selected' : '' }}>Tenis</option>
-                            <option value="padel" {{ old('deporte') == 'padel' ? 'selected' : '' }}>Pádel</option>
-                            <option value="otro" {{ old('deporte') == 'otro' ? 'selected' : '' }}>Otro</option>
+                            <option value="futboll" {{ old('deporte')=='futboll' ? 'selected' : '' }}>Fútbol</option>
+                            <option value="baloncesto" {{ old('deporte')=='baloncesto' ? 'selected' : '' }}>Baloncesto</option>
+                            <option value="voley" {{ old('deporte')=='voley' ? 'selected' : '' }}>Vóley</option>
                         </select>
                     </div>
 
@@ -140,43 +136,19 @@
 
                     <div class="col-12">
                         <label class="form-label mb-2">Formato *</label>
-                        <div class="d-flex gap-3 mb-2">
-                            <div class="form-check">
-                                <input class="form-check-input fase-radio" type="radio" name="fase_tipo" id="faseUnica"
-                                    value="unica" checked>
-                                <label class="form-check-label" for="faseUnica">Fase única</label>
-                            </div>
-                            <div class="form-check">
-                                <input class="form-check-input fase-radio" type="radio" name="fase_tipo" id="faseMulti"
-                                    value="multifase">
-                                <label class="form-check-label" for="faseMulti">Multifase</label>
-                            </div>
-                        </div>
+
+                        <!-- Solo fase única -->
+                        <input type="hidden" name="fase_tipo" value="unica">
+
                         <div id="unicaGroup">
                             <label class="form-label">Formato de fase</label>
-                            <select name="formato_unica" class="form-select">
-                                <option value="cuadro_eliminatorio"
-                                    {{ old('formato_unica')=='cuadro_eliminatorio' ? 'selected' : '' }}>
-                                    Cuadro eliminatorio</option>
-                                <option value="todos_contra_todos"
-                                    {{ old('formato_unica')=='todos_contra_todos' ? 'selected' : '' }}>
-                                    Todos contra todos</option>
-                                <option value="liga" {{ old('formato_unica')=='liga' ? 'selected' : '' }}>Liga
-                                </option>
+                            <select name="formato_unica" id="formato_unica" class="form-select">
+                                <option value="liga" {{ old('formato_unica')=='liga' ? 'selected' : '' }}>Liga</option>
+                                <option value="cuadro_eliminatorio" {{ old('formato_unica')=='cuadro_eliminatorio' ? 'selected' : '' }}>Cuadro eliminatorio</option>
                             </select>
                         </div>
-                        <div id="multiGroup" class="d-none mt-2">
-                            <label class="form-label">Formato de 1ª fase</label>
-                            <select name="formato_primera" class="form-select" disabled>
-                                <option value="grupos_todos_contra_todos">Grupos todos contra todos</option>
-                                <option value="puntos_por_grupo">Puntos por grupo</option>
-                            </select>
-                            <label class="form-label mt-2">Formato de 2ª fase</label>
-                            <select name="formato_segunda" class="form-select" disabled>
-                                <option value="cuadro_eliminatorio">Cuadro eliminatorio</option>
-                                <option value="liguilla">Liguilla</option>
-                            </select>
-                        </div>
+
+                        <!-- Eliminado: radios de Fase única / Multifase y campos ocultos de multifase -->
                     </div>
 
                     <div class="col-md-6">
@@ -209,9 +181,34 @@
             const incBtn = document.getElementById('incBtn');
             const decBtn = document.getElementById('decBtn');
             const numInput = document.getElementById('num_participantes');
-            const radios = document.querySelectorAll('.fase-radio');
-            const unicaGroup = document.getElementById('unicaGroup');
-            const multiGroup = document.getElementById('multiGroup');
+            const formatoUnica = document.getElementById('formato_unica');
+            const deporteSel = document.getElementById('deporte');
+
+            // Relación deporte -> formatos permitidos
+            const formatosPorDeporte = {
+                futbol: [
+                    { value: 'liga', label: 'Liga' },
+                    { value: 'cuadro_eliminatorio', label: 'Cuadro eliminatorio' },
+                ],
+                baloncesto: [
+                    { value: 'liga', label: 'Liga' },
+                    { value: 'cuadro_eliminatorio', label: 'Cuadro eliminatorio' },
+                ],
+                voley: [
+                    { value: 'liga', label: 'Liga' },
+                    { value: 'cuadro_eliminatorio', label: 'Cuadro eliminatorio' },
+                ],
+            };
+
+            function rebuildFormatoUnicaOptions() {
+                const dep = (deporteSel.value || '').toLowerCase();
+                const opts = formatosPorDeporte[dep] || formatosPorDeporte.futbol;
+                const current = formatoUnica.value;
+                formatoUnica.innerHTML = opts.map(o => `<option value="${o.value}">${o.label}</option>`).join('');
+                if ([...formatoUnica.options].some(o => o.value === current)) {
+                    formatoUnica.value = current;
+                }
+            }
 
             incBtn.addEventListener('click', () => {
                 numInput.value = Math.max(2, parseInt(numInput.value || 0) + 1);
@@ -220,23 +217,10 @@
                 numInput.value = Math.max(2, parseInt(numInput.value || 0) - 1);
             });
 
-            function updateFormato() {
-                const val = document.querySelector('input[name="fase_tipo"]:checked').value;
-                if (val === 'unica') {
-                    unicaGroup.classList.remove('d-none');
-                    multiGroup.classList.add('d-none');
-                    unicaGroup.querySelector('select').disabled = false;
-                    multiGroup.querySelectorAll('select').forEach(s => s.disabled = true);
-                } else {
-                    unicaGroup.classList.add('d-none');
-                    multiGroup.classList.remove('d-none');
-                    unicaGroup.querySelector('select').disabled = true;
-                    multiGroup.querySelectorAll('select').forEach(s => s.disabled = false);
-                }
-            }
+            deporteSel.addEventListener('change', rebuildFormatoUnicaOptions);
 
-            radios.forEach(r => r.addEventListener('change', updateFormato));
-            updateFormato();
+            // Inicialización
+            rebuildFormatoUnicaOptions();
         })();
     </script>
 </x-app-layout>

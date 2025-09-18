@@ -158,13 +158,17 @@
                     <label for="torneo_id" class="form-label">Torneo *</label>
                     <select id="torneo_id" name="torneo_id" class="form-select" required>
                         <option value="">Selecciona un torneo</option>
+                        @php $validos = ['futboll','voley','baloncesto']; @endphp
                         @foreach($torneos as $torneo)
+                            @continue(!in_array($torneo->deporte, $validos, true))
                             <option value="{{ $torneo->id }}"
+                                    data-deporte="{{ $torneo->deporte }}"
                                 {{ old('torneo_id', $equipo->torneo_id ?? '') == $torneo->id ? 'selected' : '' }}>
                                 {{ $torneo->deporte ?? $torneo->nombre ?? 'Torneo #'.$torneo->id }}
                             </option>
                         @endforeach
                     </select>
+                    <small id="jugadoresInfo" style="display:block;margin-top:6px;color:#00c896;font-weight:700;"></small>
                 </div>
 
                 <div>
@@ -192,14 +196,8 @@
                     <button type="button" id="addJugador" class="btn-add">Añadir jugador</button>
                 </div>
 
-                <div>
-                    <label for="categoria" class="form-label">Categoría</label>
-                    <input id="categoria" name="categoria" type="text" value="{{ old('categoria', $equipo->categoria ?? '') }}"
-                        class="form-control">
-                </div>
-
                 <div class="pt-4">
-                    <button type="submit" class="btn-submit">
+                    <button type="submit" class="btn-submit" id="submitBtn">
                         {{ isset($equipo) ? 'Actualizar equipo' : 'Registrar equipo' }}
                     </button>
                 </div>
@@ -209,8 +207,17 @@
 
     <script>
         (function(){
+            const recomendado = {
+                futboll: 11,
+                voley: 6,
+                baloncesto: 5
+            };
+
+            const torneoSelect = document.getElementById('torneo_id');
+            const info = document.getElementById('jugadoresInfo');
             const addBtn = document.getElementById('addJugador');
             const list = document.getElementById('jugadoresList');
+            const submitBtn = document.getElementById('submitBtn');
 
             function makeRow(value = '') {
                 const wrapper = document.createElement('div');
@@ -226,21 +233,74 @@
                 btn.type = 'button';
                 btn.className = 'btn-remove';
                 btn.textContent = 'Eliminar';
-                btn.addEventListener('click', () => wrapper.remove());
+                btn.addEventListener('click', () => {
+                    wrapper.remove();
+                    updateInfo();
+                });
                 wrapper.appendChild(input);
                 wrapper.appendChild(btn);
                 return wrapper;
             }
 
+            function deporteActual() {
+                const opt = torneoSelect.options[torneoSelect.selectedIndex];
+                return opt ? (opt.getAttribute('data-deporte') || '').trim() : '';
+            }
+
+            function actualizarEstadoBoton(ok) {
+                submitBtn.disabled = !ok;
+                submitBtn.style.opacity = ok ? '1' : '0.7';
+                submitBtn.style.cursor = ok ? 'pointer' : 'not-allowed';
+                submitBtn.title = ok ? '' : 'Debes tener al menos la cantidad recomendada de jugadores';
+            }
+
+            function updateInfo() {
+                const dep = deporteActual();
+                const count = list.querySelectorAll('.jugadores-row').length;
+
+                if (!dep) {
+                    info.textContent = 'Selecciona un torneo para ver la cantidad recomendada.';
+                    actualizarEstadoBoton(true);
+                    return;
+                }
+
+                const rec = recomendado[dep];
+                if (!rec) {
+                    info.textContent = `Deporte: ${dep}. (Sin regla de recomendación) Actual: ${count}`;
+                    actualizarEstadoBoton(true);
+                    return;
+                }
+
+                info.textContent = `Deporte: ${dep}. Mínimo recomendado: ${rec}. Actual: ${count}`;
+                actualizarEstadoBoton(count >= rec);
+            }
+
             addBtn.addEventListener('click', () => {
                 list.appendChild(makeRow());
+                updateInfo();
             });
 
             document.querySelectorAll('.btn-remove').forEach(b => {
                 b.addEventListener('click', (e) => {
                     e.target.closest('.jugadores-row').remove();
+                    updateInfo();
                 });
             });
+
+            torneoSelect.addEventListener('change', updateInfo);
+
+            document.getElementById('equipoForm').addEventListener('submit', (e) => {
+                const dep = deporteActual();
+                const rec = recomendado[dep];
+                const count = list.querySelectorAll('.jugadores-row').length;
+                if (dep && rec && count < rec) {
+                    e.preventDefault();
+                    alert(`Debes registrar al menos ${rec} jugadores para ${dep}. Actualmente: ${count}.`);
+                }
+            });
+
+            // Inicializar estado al cargar
+            updateInfo();
         })();
     </script>
 </x-app-layout>

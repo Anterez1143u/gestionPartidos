@@ -1,6 +1,9 @@
 <x-app-layout>
     @php
         $canViewMatches = $canViewMatches ?? false;
+        $tipo = $tipo ?? 'grupos';
+        $equipos_por_grupo = (int)($equipos_por_grupo ?? 4);
+        $minReq = $tipo === 'grupos' ? max(2, $equipos_por_grupo) : 2;
     @endphp
     <style>
         body {
@@ -150,11 +153,15 @@
                         <option value="">Selecciona un torneo</option>
                         @foreach($torneos as $t)
                             <option value="{{ $t->id }}"
+
                                 {{ (int)old('torneo_id', $selected ?? '') === $t->id ? 'selected' : '' }}>
-                                {{ $t->deporte ?? $t->nombre ?? 'Torneo #'.$t->id }} @if($t->numero_participantes) ({{ $t->numero_participantes }}) @endif
+                                {{ ucfirst($t->deporte) }} @if($t->numero_participantes) ({{ $t->numero_participantes }}) @endif
                             </option>
                         @endforeach
                     </select>
+                    <div id="equiposResumen" class="small" style="margin-top:-8px;margin-bottom:12px;color:#a7c6d8">
+                        Cargando equipos…
+                    </div>
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
@@ -441,6 +448,8 @@
                 });
                 const json = await res.json();
                 if (json.groups) {
+                   // Asegurar que todos los items son {id,nombre}
+                   json.groups = json.groups.map(g => g.map(t => (t && typeof t==='object') ? { id:Number(t.id), nombre:String(t.nombre||'') } : { id:Number(t), nombre:String(t) }));
                     lastGroups = json.groups;
                     rebuildNameIndex();
                     // render preview (cada item puede ser {id,nombre})

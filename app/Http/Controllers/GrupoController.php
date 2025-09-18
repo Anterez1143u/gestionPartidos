@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use App\Models\Equipo;
 use App\Models\Torneo;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Session;
 
 class GrupoController extends Controller
@@ -59,5 +59,32 @@ class GrupoController extends Controller
         Session::put('generated_groups_torneo', (int)$request->torneo_id);
 
         return response()->json(['groups' => $groups]);
+    }
+
+    public function generateRun(Request $request)
+    {
+        $data = $request->validate([
+            'torneo_id' => ['required', 'integer', 'exists:torneos,id'],
+            'equipos_por_grupo' => ['required', 'integer', 'min:2'],
+        ]);
+
+        // Mínimo requerido para grupos = equipos_por_grupo
+        $per = (int) $data['equipos_por_grupo'];
+        $total = Equipo::where('torneo_id', $data['torneo_id'])->count();
+        if ($total < $per) {
+            return response()->json([
+                'error' => "Se requieren al menos {$per} equipos para generar grupos de {$per}."
+            ], 422);
+        }
+
+        $groups = [];
+        $idx = 0;
+        foreach ($equipos as $e) {
+            $g = intdiv($idx, $per);
+            $groups[$g][] = ['id' => $e->id, 'nombre' => $e->nombre];
+            $idx++;
+        }
+
+        return response()->json(['groups' => array_values($groups)]);
     }
 }
